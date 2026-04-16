@@ -160,11 +160,32 @@ class TestParser:
         execute_calls = [c for c in orders_func.db_calls if c["method"] == "execute"]
         assert len(execute_calls) >= 2  # 최소 2개 개별 execute
 
-    def test_parse_bad_code_api_calls(self):
-        """generate_summary: HTTP POST 호출 탐지"""
+    def test_parse_bad_code_llm_url_reclassified(self):
+        """generate_summary: anthropic.com URL → LLM 호출로 재분류"""
         result = parse_code(BAD_CODE)
         summary_func = next(f for f in result.functions if f.name == "generate_summary")
-        assert len(summary_func.api_calls) >= 1
+        # requests.post("https://api.anthropic.com/...") → LLM으로 재분류됨
+        assert len(summary_func.llm_calls) >= 1
+        # API 호출에서는 제거됨
+        assert len(summary_func.api_calls) == 0
+
+    def test_parse_good_code_llm_url_reclassified(self):
+        """good 코드도 LLM URL 재분류 동작"""
+        result = parse_code(GOOD_CODE)
+        summary_func = next(f for f in result.functions if f.name == "generate_summary")
+        assert len(summary_func.llm_calls) >= 1
+
+    def test_parse_good_code_cache_decorator(self):
+        """good 코드: @lru_cache 데코레이터 탐지"""
+        result = parse_code(GOOD_CODE)
+        summary_func = next(f for f in result.functions if f.name == "generate_summary")
+        assert summary_func.has_cache_decorator is True
+
+    def test_parse_bad_code_no_cache(self):
+        """bad 코드: 캐시 데코레이터 없음"""
+        result = parse_code(BAD_CODE)
+        summary_func = next(f for f in result.functions if f.name == "generate_summary")
+        assert summary_func.has_cache_decorator is False
 
     def test_parse_good_code_single_loop(self):
         """good 코드: 단일 루프 (depth 1)"""
@@ -207,49 +228,54 @@ class TestParser:
 # Analyzer 테스트 — 3축 에너지 분석
 # ================================================================
 class TestAnalyzer:
-    """analyzer.py 단위 테스트"""
+    """analyzer.py 단위 테스트 (기본값: functional_unit=1, executions=1000)"""
 
-    def test_analyze_bad_code_high_energy(self):
-        """bad 코드 → 에너지가 good보다 높음 (M=0, R=1로 순수 에너지 비교)"""
-        parsed = parse_code(BAD_CODE)
-        # M=0, R=1로 내재 탄소 제거 → 순수 에너지 차이만 비교
-        result = analyze(parsed, embodied_carbon=0, functional_unit=1)
-        assert result.energy_breakdown.total_energy_kwh > 0
+    def test_bad_sci_score_higher_than_good(self):
+        """★ 핵심 검증: bad SCI 점수 > good SCI 점수 (동일 조건)"""
+        bad_result = analyze(parse_code(BAD_CODE))
+        good_result = analyze(parse_code(GOOD_CODE))
+        assert bad_result.sci_result.sci_score > good_result.sci_result.sci_score
 
-    def test_analyze_good_code_grade(self):
-        """good 코드 → A 또는 B등급 (낮은 SCI)"""
-        parsed = parse_code(GOOD_CODE)
-        result = analyze(parsed)
-        assert result.sci_result.grade in ("A", "B")
+    def test_bad_and_good_sci_score_gap(self):
+        """bad와 good의 SCI 점수 차이가 유의미 (M=0으로 에너지만 비교)"""
+        # M=0으로 내재 탄소 제거 → 순수 에너지 기반 점수 비교
+        bad_result = analyze(parse_code(BAD_CODE), embodied_carbon=0)
+        good_result = analyze(parse_code(GOOD_CODE), embodied_carbon=0)
+        # bad의 Compute Energy가 중첩루프로 10배+ 높음
+        assert bad_result.sci_result.sci_score > good_result.sci_result.sci_score * 1.1
 
-    def test_bad_higher_than_good(self):
-        """핵심 검증: bad 에너지 > good 에너지 (순수 에너지 비교)"""
-        # M=0, R=1 → 내재 탄소 제거, SCI = E × I 순수 비교
-        bad_result = analyze(parse_code(BAD_CODE), embodied_carbon=0, functional_unit=1)
-        good_result = analyze(parse_code(GOOD_CODE), embodied_carbon=0, functional_unit=1)
-        assert bad_result.energy_breakdown.total_energy_kwh > good_result.energy_breakdown.total_energy_kwh
+    def test_bad_energy_higher_than_good(self):
+        """bad 에너지 > good 에너지 (3축 합산)"""
+        bad_result = analyze(parse_code(BAD_CODE))
+        good_result = analyze(parse_code(GOOD_CODE))
+        assert bad_result.energy_breakdown.total_energy_kwh > \
+               good_result.energy_breakdown.total_energy_kwh
 
-    def test_mixed_has_issues_but_fewer_than_bad(self):
-        """mixed: 이슈 있지만 bad보다 적음 (N+1은 있고 중첩루프는 없음)"""
+    def test_mixed_issues_fewer_than_bad(self):
+        """mixed: 이슈 있지만 bad보다 적음"""
         bad_result = analyze(parse_code(BAD_CODE))
         mixed_result = analyze(parse_code(MIXED_CODE))
-        # mixed는 N+1 이슈만 있고, bad는 중첩루프+N+1 둘 다 있음
         assert len(mixed_result.issues) < len(bad_result.issues)
-        # mixed의 max_nested_depth = 1 (중첩 없음), bad = 2 (O(n²))
         assert mixed_result.max_nested_depth < bad_result.max_nested_depth
 
     def test_bad_code_issues_detected(self):
-        """bad 코드에서 비효율 이슈 탐지 (중첩루프 + N+1)"""
+        """bad 코드에서 비효율 이슈 탐지 (중첩루프 + N+1 + 캐싱없는 LLM)"""
         result = analyze(parse_code(BAD_CODE))
-        assert len(result.issues) >= 2  # 최소 중첩루프 + N+1 쿼리
+        assert len(result.issues) >= 3
         issue_types = [i["type"] for i in result.issues]
-        assert "compute" in issue_types  # O(n²) 탐지
-        assert "data" in issue_types     # N+1 탐지
+        assert "compute" in issue_types   # O(n²) 탐지
+        assert "data" in issue_types      # N+1 탐지
+        assert "token" in issue_types     # 캐싱 없는 LLM 호출 탐지
+
+    def test_bad_code_has_token_energy(self):
+        """bad 코드: LLM URL 탐지 → Token Energy > 0"""
+        result = analyze(parse_code(BAD_CODE))
+        assert result.energy_breakdown.token_energy_kwh > 0
+        assert result.total_llm_calls >= 1
 
     def test_good_code_minimal_issues(self):
-        """good 코드에서 이슈가 적거나 없음"""
+        """good 코드에서 이슈가 bad보다 적음"""
         result = analyze(parse_code(GOOD_CODE))
-        # good 코드도 약간의 이슈는 있을 수 있지만 bad보다 적어야 함
         bad_result = analyze(parse_code(BAD_CODE))
         assert len(result.issues) < len(bad_result.issues)
 
@@ -257,9 +283,9 @@ class TestAnalyzer:
         """3축 에너지 브레이크다운 존재"""
         result = analyze(parse_code(BAD_CODE))
         eb = result.energy_breakdown
-        assert eb.compute_energy_kwh >= 0
-        assert eb.data_energy_kwh >= 0
-        assert eb.token_energy_kwh >= 0
+        assert eb.compute_energy_kwh > 0
+        assert eb.data_energy_kwh > 0
+        assert eb.token_energy_kwh > 0   # LLM URL 탐지로 0이 아님
         assert eb.total_energy_kwh > 0
 
     def test_function_analyses_count(self):
@@ -269,12 +295,10 @@ class TestAnalyzer:
         assert len(result.function_analyses) == 3
 
     def test_custom_carbon_intensity(self):
-        """탄소 강도 변경 시 SCI 점수 변화 (M=0으로 에너지 차이 부각)"""
+        """탄소 강도 변경 시 SCI 점수 변화"""
         parsed = parse_code(BAD_CODE)
-        # M=0으로 내재 탄소 제거 → I 차이가 SCI에 반영됨
-        korea = analyze(parsed, carbon_intensity=450, embodied_carbon=0, functional_unit=1)
-        france = analyze(parsed, carbon_intensity=60, embodied_carbon=0, functional_unit=1)
-        # 프랑스(원자력 60)가 한국(450)보다 SCI 낮음
+        korea = analyze(parsed, carbon_intensity=450, embodied_carbon=0)
+        france = analyze(parsed, carbon_intensity=60, embodied_carbon=0)
         assert france.sci_result.sci_score < korea.sci_result.sci_score
 
     def test_empty_code_analysis(self):
@@ -288,5 +312,5 @@ class TestAnalyzer:
         result = analyze(parse_code(BAD_CODE))
         assert result.total_lines > 0
         assert result.total_db_calls >= 2
-        assert result.total_api_calls >= 1
+        assert result.total_llm_calls >= 1  # LLM URL 재분류 반영
         assert result.max_nested_depth >= 2

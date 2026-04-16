@@ -27,6 +27,7 @@ class FunctionInfo:
     nested_loop_depth: int = 0        # 최대 중첩 루프 깊이
     branch_count: int = 0            # 분기 개수 (if/elif/else)
     cyclomatic_complexity: int = 1    # 순환 복잡도 (McCabe)
+    has_cache_decorator: bool = False  # @lru_cache/@cache 데코레이터 여부
     db_calls: list = field(default_factory=list)      # DB 호출 목록
     api_calls: list = field(default_factory=list)     # HTTP API 호출 목록
     llm_calls: list = field(default_factory=list)     # LLM API 호출 목록
@@ -69,6 +70,18 @@ LLM_CALL_PATTERNS = {
     "create", "complete", "chat", "generate", "messages",
 }
 LLM_MODULES = {"anthropic", "openai", "langchain", "litellm"}
+
+# ================================================================
+# URL 기반 LLM 재분류 — requests.post("https://api.anthropic.com/...") 탐지
+# ================================================================
+# requests.post로 LLM API를 직접 호출하는 경우, method가 "post"이므로
+# API 호출로 분류됨. URL 인자에 아래 도메인이 포함되면 LLM 호출로 재분류.
+LLM_API_DOMAINS = {
+    "anthropic.com",
+    "openai.com",
+    "api.cohere.ai",
+    "generativelanguage.googleapis.com",
+}
 
 
 def parse_code(source_code: str) -> ParseResult:
@@ -140,6 +153,10 @@ def _analyze_function(node: ast.FunctionDef) -> FunctionInfo:
         line_count=end_lineno - node.lineno + 1,
     )
 
+    # 캐시 데코레이터 탐지 (@lru_cache, @cache, @cached 등)
+    # 캐싱이 있으면 반복 호출 시 실제 실행 없이 캐시 반환 → 에너지 절감
+    info.has_cache_decorator = _has_cache_decorator(node)
+
     # 루프 분석 (중첩 깊이 포함)
     info.loop_count, info.nested_loop_depth = _count_loops(node)
 
@@ -152,7 +169,37 @@ def _analyze_function(node: ast.FunctionDef) -> FunctionInfo:
     info.api_calls = _find_calls(node, API_CALL_PATTERNS, API_MODULES)
     info.llm_calls = _find_calls(node, LLM_CALL_PATTERNS, LLM_MODULES)
 
+    # URL 기반 LLM 재분류:
+    # requests.post("https://api.anthropic.com/...") 같은 호출은
+    # method="post"이므로 api_calls에 들어감. URL에 LLM 도메인이 있으면 재분류.
+    info.api_calls, reclassified = _reclassify_llm_by_url(
+        node, info.api_calls
+    )
+    info.llm_calls.extend(reclassified)
+
     return info
+
+
+def _has_cache_decorator(node: ast.FunctionDef) -> bool:
+    """
+    @lru_cache, @cache, @cached 등 캐시 데코레이터 탐지
+
+    캐싱이 있으면 동일 인자 호출 시 실제 함수 실행 없이 캐시 반환.
+    이는 특히 LLM API 호출에서 막대한 Token Energy 절감 효과.
+    """
+    cache_patterns = {"lru_cache", "cache", "cached", "memoize", "ttl_cache"}
+    for decorator in node.decorator_list:
+        # @lru_cache 또는 @lru_cache(maxsize=256)
+        if isinstance(decorator, ast.Name) and decorator.id in cache_patterns:
+            return True
+        if isinstance(decorator, ast.Call):
+            if isinstance(decorator.func, ast.Name) and decorator.func.id in cache_patterns:
+                return True
+            # @functools.lru_cache
+            if isinstance(decorator.func, ast.Attribute) and \
+               decorator.func.attr in cache_patterns:
+                return True
+    return False
 
 
 def _count_loops(node: ast.AST) -> tuple[int, int]:
@@ -246,6 +293,56 @@ def _find_calls(
     return calls
 
 
+def _reclassify_llm_by_url(
+    node: ast.AST,
+    api_calls: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """
+    API 호출 중 URL에 LLM 도메인이 포함된 것을 LLM 호출로 재분류
+
+    예: requests.post("https://api.anthropic.com/v1/messages", ...)
+        → method="post"로 api_calls에 들어가지만
+        → URL에 "anthropic.com" → LLM 호출로 재분류
+
+    Returns:
+        (남은 api_calls, 재분류된 llm_calls)
+    """
+    if not api_calls:
+        return api_calls, []
+
+    # AST에서 모든 Call 노드의 첫 번째 문자열 인자(URL) 수집
+    url_by_line = {}
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        lineno = getattr(child, "lineno", 0)
+        # 첫 번째 위치 인자가 문자열이면 URL 후보
+        if child.args and isinstance(child.args[0], ast.Constant):
+            val = child.args[0].value
+            if isinstance(val, str):
+                url_by_line[lineno] = val
+
+    remaining_api = []
+    reclassified_llm = []
+
+    for call in api_calls:
+        url = url_by_line.get(call["line"], "")
+        is_llm = any(domain in url for domain in LLM_API_DOMAINS)
+
+        if is_llm:
+            reclassified_llm.append({
+                "method": call["method"],
+                "line": call["line"],
+                "module_hint": call["module_hint"],
+                "url_hint": url,
+                "reclassified": True,
+            })
+        else:
+            remaining_api.append(call)
+
+    return remaining_api, reclassified_llm
+
+
 def _analyze_global_calls(tree: ast.Module) -> tuple[list, list, list]:
     """함수 밖 전역 스코프의 DB/API/LLM 호출 분석"""
     # 함수 내부 노드를 제외한 전역 스코프 노드만 추출
@@ -284,5 +381,9 @@ def _analyze_global_calls(tree: ast.Module) -> tuple[list, list, list]:
                     global_api.append(call_info)
                 if method_name in LLM_CALL_PATTERNS and module_hint in LLM_MODULES:
                     global_llm.append(call_info)
+
+    # 전역 API 호출에도 URL 기반 LLM 재분류 적용
+    global_api, reclassified = _reclassify_llm_by_url(tree, global_api)
+    global_llm.extend(reclassified)
 
     return global_db, global_api, global_llm

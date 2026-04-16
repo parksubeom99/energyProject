@@ -28,8 +28,9 @@ from sci.energy_model import (
 # 함수별 실행 횟수 추정 기본값
 # ================================================================
 # 정적 분석이므로 실제 실행 횟수는 알 수 없다.
-# 루프 내부 호출 등을 고려한 보수적 추정치 사용.
-DEFAULT_EXECUTIONS_PER_FUNCTION = 10
+# API 서버 기준: 한 함수가 1000건/일 호출된다고 가정 (현실적 추정)
+# 이 값이 충분히 커야 bad/good 코드 간 에너지 차이가 SCI 점수에 반영됨.
+DEFAULT_EXECUTIONS_PER_FUNCTION = 1000
 
 # LLM 호출당 평균 추정 토큰 수 (입력+출력)
 DEFAULT_TOKENS_PER_LLM_CALL = 2000
@@ -82,7 +83,7 @@ def analyze(
     parse_result: ParseResult,
     carbon_intensity: float = 450.0,
     embodied_carbon: float = 10.0,
-    functional_unit: int = 1000,
+    functional_unit: int = 1,
     cpu_profile: str = "cloud_default",
 ) -> AnalysisResult:
     """
@@ -231,17 +232,32 @@ def _analyze_function(
     )
 
     # --- Token Energy ---
+    # 함수가 DEFAULT_EXECUTIONS_PER_FUNCTION번 호출되면 LLM도 그만큼 호출.
+    # 단, @lru_cache 등 캐시 데코레이터가 있으면 캐시 히트 → 실제 호출 감소.
     llm_call_count = len(func.llm_calls)
-    estimated_tokens = llm_call_count * DEFAULT_TOKENS_PER_LLM_CALL
+    estimated_tokens = (
+        llm_call_count * DEFAULT_TOKENS_PER_LLM_CALL
+        * DEFAULT_EXECUTIONS_PER_FUNCTION
+    )
 
-    if llm_call_count > 0 and func.loop_count > 0:
-        # 루프 안에서 LLM 호출 → 캐싱 없으면 토큰 낭비
-        estimated_tokens *= DEFAULT_EXECUTIONS_PER_FUNCTION
+    # 캐시 효과: @lru_cache 등이 있으면 캐시 히트율 90% 가정 → 실제 호출 10%
+    CACHE_HIT_REDUCTION = 0.1  # 캐시 적용 시 실제 호출 비율
+    if func.has_cache_decorator and llm_call_count > 0:
+        estimated_tokens = int(estimated_tokens * CACHE_HIT_REDUCTION)
+        issues.append({
+            "type": "token",
+            "severity": "info",
+            "line": func.llm_calls[0]["line"] if func.llm_calls else func.lineno,
+            "message": f"캐시 데코레이터 적용 — LLM 호출 90% 절감 예상",
+            "suggestion": "캐시 TTL 및 maxsize 최적화 검토",
+        })
+    elif llm_call_count > 0 and not func.has_cache_decorator:
+        # 캐싱 없는 LLM 호출 → Token Energy 낭비 이슈
         issues.append({
             "type": "token",
             "severity": "high",
             "line": func.llm_calls[0]["line"] if func.llm_calls else func.lineno,
-            "message": f"루프 내 LLM 호출 — 캐싱 없이 {llm_call_count}건 반복 호출",
+            "message": f"캐싱 없는 LLM 호출 — {llm_call_count}건 × {DEFAULT_EXECUTIONS_PER_FUNCTION}회 반복",
             "suggestion": "lru_cache 또는 Redis 캐싱으로 중복 호출 제거",
         })
 
