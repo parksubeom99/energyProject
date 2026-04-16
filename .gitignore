@@ -1,0 +1,51 @@
+# GreenPulse — .gitignore
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# ===== 가상환경 =====
+venv/
+.venv/
+.env
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# ===== Claude Code =====
+.claude/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Docker =====
+docker-compose.override.yml
+
+# ===== Node (프론트엔드) =====
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+
+# ===== 테스트 =====
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ===== 데이터/보안 =====
+*.csv
+*.json.bak
+*.pem
+*.key

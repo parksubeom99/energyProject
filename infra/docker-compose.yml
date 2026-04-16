@@ -1,0 +1,128 @@
+# GreenPulse — 로컬 개발용 Docker Compose
+# ISO/IEC 21031:2024 SCI 기반 코드 에너지 분석 + AI 자동 최적화 플랫폼
+#
+# 사용법: docker compose -f infra/docker-compose.yml up -d
+# 검증:   docker compose -f infra/docker-compose.yml config
+# 중지:   docker compose -f infra/docker-compose.yml down
+
+services:
+
+  # ===== PostgreSQL 16 — 분석 이력 저장 (L6 데이터) =====
+  # JSON 처리 강점 → SCI 분석 결과(중첩 JSON) 저장에 최적
+  postgres:
+    image: postgres:16-alpine
+    container_name: gp-postgres
+    environment:
+      POSTGRES_DB: greenpulse
+      POSTGRES_USER: greenpulse
+      POSTGRES_PASSWORD: greenpulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - gp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greenpulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gp-network
+
+  # ===== Redis 7 — 결과 캐시 + 토큰 블랙리스트 (L6 캐시) =====
+  # 분석 결과 캐싱 → 동일 코드 재분석 시 즉시 응답
+  # JWT Refresh Token 블랙리스트 → RTR(Refresh Token Rotation) 지원
+  redis:
+    image: redis:7-alpine
+    container_name: gp-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gp-network
+
+  # ===== Zookeeper — Kafka 메타데이터 관리 (L7 메시징) =====
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: gp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gp-network
+
+  # ===== Kafka — 분석 요청/결과 비동기 메시징 (L7 메시징) =====
+  # 분석 시간이 10초~5분 변동 → 동기 처리 시 타임아웃 위험
+  # Kafka로 비동기 처리 + 실패 시 자동 재시도 보장
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: gp-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - gp-network
+
+  # ===== FastAPI — 분석 API 서버 (L3 API) =====
+  # JWT + RBAC + Rate Limiting → 인증/인가 게이트웨이
+  # 코드 업로드 → 파이프라인 실행 → SCI 점수 반환
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: gp-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://greenpulse:greenpulse@postgres:5432/greenpulse
+      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - JWT_SECRET=greenpulse-dev-secret-change-in-prod
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+    volumes:
+      - ../backend:/app    # 개발 시 코드 변경 즉시 반영 (hot reload)
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - gp-network
+
+# ===== 네트워크 =====
+networks:
+  gp-network:
+    driver: bridge
+
+# ===== 볼륨 =====
+volumes:
+  gp_postgres_data:

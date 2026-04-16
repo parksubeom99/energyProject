@@ -1,0 +1,41 @@
+# GreenPulse — SCI 기반 코드 에너지 분석 플랫폼
+# Python 3.11 | ISO/IEC 21031:2024
+
+# ===== L3 API Framework (FastAPI) =====
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# ===== L4 보안 (JWT + RBAC) =====
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# ===== L6 데이터 (PostgreSQL + Redis) =====
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+redis==5.1.0
+
+# ===== L7 메시징 (Kafka) =====
+aiokafka==0.11.0
+
+# ===== 분석 엔진 (AST + 복잡도) =====
+radon==6.0.1
+astroid==3.2.0
+
+# ===== SCI 계산 (상관분석) =====
+scipy==1.14.0
+numpy==2.1.0
+
+# ===== Claude API (최적화 코드 생성) =====
+anthropic==0.34.0
+
+# ===== 테스트 =====
+pytest==8.3.0
+pytest-asyncio==0.24.0
+httpx==0.27.0
+
+# ===== 유틸 =====
+pydantic==2.9.0
+pydantic-settings==2.5.0
+python-dotenv==1.0.1
