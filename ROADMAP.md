@@ -9,7 +9,7 @@
 
 ```
 [x] STEP 0 — 환경 세팅 (완료 시 x 표시)
-[ ] STEP 1 — SCI 공식 엔진
+[x] STEP 1 — SCI 공식 엔진
 [ ] STEP 2 — 파서 + 분석기
 [ ] STEP 3 — 점수 산출 + 근거 생성
 [ ] STEP 4 — FastAPI + JWT + RBAC
@@ -282,3 +282,7 @@ python -m pytest backend/tests/ -v --tb=short
 2. **STEP 순서 건너뛰기 충동** → 금지. 이전 STEP 검증 명령어 통과 확인 후에만 진행
 3. **설계 변경 필요** → 코드 수정 전 "ADR-XXX 작성 후 진행" 선언
 4. **길을 잃었을 때** → 이 파일의 "현재 위치 추적"을 읽고 체크된 마지막 STEP 다음부터 재개
+5. **커밋 규칙 (필수 3종 세트)** → 각 STEP 완료 = 검증 통과 + 커밋 + 체크박스 업데이트
+   - 커밋 메시지 형식: `STEP X: <한 줄 요약> (N tests pass)`
+   - 체크박스 업데이트와 코드를 같은 커밋에 포함
+   - .pytest_cache, .claude/ 등 자동 생성 파일은 .gitignore 확인 후 커밋 금지
