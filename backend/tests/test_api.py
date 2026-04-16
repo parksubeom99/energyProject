@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from main import app
 from auth.jwt_handler import clear_blacklist
 from auth.rbac import clear_all_usage
+from events.kafka_consumer import clear_results
 
 
 # ================================================================
@@ -63,9 +64,11 @@ def cleanup():
     """각 테스트 전후 상태 초기화"""
     clear_blacklist()
     clear_all_usage()
+    clear_results()
     yield
     clear_blacklist()
     clear_all_usage()
+    clear_results()
 
 
 def _login(username="admin", password="greenpulse") -> dict:
@@ -148,7 +151,7 @@ class TestAuth:
 
     def test_access_without_token(self):
         """토큰 없이 보호 엔드포인트 → 401/403 (인증 필요)"""
-        resp = client.post("/analyze", json={
+        resp = client.post("/analyze/sync", json={
             "source_code": "print('hello')",
         })
         assert resp.status_code in (401, 403)
@@ -156,7 +159,7 @@ class TestAuth:
     def test_access_with_invalid_token(self):
         """잘못된 토큰 → 401"""
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": "print('hello')"},
             headers=_auth_header("invalid.token.here"),
         )
@@ -171,7 +174,7 @@ class TestAnalyze:
         """★ 핵심: 코드 분석 → SCI 점수 + 근거 JSON 응답"""
         tokens = _login()
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": BAD_CODE},
             headers=_auth_header(tokens["access_token"]),
         )
@@ -187,7 +190,7 @@ class TestAnalyze:
         """bad 코드 → D 또는 F 등급"""
         tokens = _login()
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": BAD_CODE},
             headers=_auth_header(tokens["access_token"]),
         )
@@ -199,7 +202,7 @@ class TestAnalyze:
         """근거(findings) 필드 구조 검증"""
         tokens = _login()
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": BAD_CODE},
             headers=_auth_header(tokens["access_token"]),
         )
@@ -218,13 +221,13 @@ class TestAnalyze:
         tokens = _login()
         # 한국 (450)
         kr = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": BAD_CODE, "region": "KR"},
             headers=_auth_header(tokens["access_token"]),
         ).json()
         # 프랑스 (60)
         fr = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": BAD_CODE, "region": "FR"},
             headers=_auth_header(tokens["access_token"]),
         ).json()
@@ -234,7 +237,7 @@ class TestAnalyze:
         """문법 오류 코드 → 422"""
         tokens = _login()
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": "def broken(:\n  pass"},
             headers=_auth_header(tokens["access_token"]),
         )
@@ -245,7 +248,7 @@ class TestAnalyze:
         tokens = _login()
         # 먼저 분석 실행
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": "x = 1"},
             headers=_auth_header(tokens["access_token"]),
         )
@@ -281,7 +284,7 @@ class TestRateLimit:
         # 5회 성공
         for i in range(5):
             resp = client.post(
-                "/analyze",
+                "/analyze/sync",
                 json={"source_code": f"x = {i}"},
                 headers=headers,
             )
@@ -289,7 +292,7 @@ class TestRateLimit:
 
         # 6번째 → 429 Too Many Requests
         resp = client.post(
-            "/analyze",
+            "/analyze/sync",
             json={"source_code": "x = 999"},
             headers=headers,
         )
@@ -306,7 +309,7 @@ class TestRateLimit:
         # 10회 모두 성공
         for i in range(10):
             resp = client.post(
-                "/analyze",
+                "/analyze/sync",
                 json={"source_code": f"x = {i}"},
                 headers=headers,
             )
@@ -330,7 +333,7 @@ class TestHistory:
         headers = _auth_header(tokens["access_token"])
 
         # 분석 실행
-        client.post("/analyze", json={"source_code": "x = 1"}, headers=headers)
+        client.post("/analyze/sync", json={"source_code": "x = 1"}, headers=headers)
 
         # 이력 확인
         resp = client.get("/history", headers=headers)

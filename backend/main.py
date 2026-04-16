@@ -4,14 +4,16 @@ GreenPulse API 서버 — FastAPI 진입점
 ISO/IEC 21031:2024 SCI 기반 코드 에너지 분석 + AI 자동 최적화 플랫폼
 
 엔드포인트:
-- POST /auth/token      로그인 → JWT 발급
+- POST /auth/token       로그인 → JWT 발급
 - POST /auth/refresh     토큰 갱신 (RTR)
-- POST /analyze          코드 분석 요청 (JWT 필수)
-- GET  /analyze/{id}     분석 결과 조회
+- POST /analyze          비동기 분석 → Kafka 발행 → 202 즉시 응답
+- POST /analyze/sync     동기 분석 → 즉시 결과 반환 (호환용)
+- GET  /analyze/{id}     분석 결과 조회 (폴링)
 - GET  /history          분석 이력
 - GET  /health           헬스체크
 
 보안: JWT + RBAC + Rate Limiting
+비동기: Kafka Producer → Consumer 워커 → 결과 저장소
 """
 import uuid
 from datetime import datetime
@@ -35,6 +37,13 @@ from pipeline.parser import parse_code
 from pipeline.analyzer import analyze
 from pipeline.scorer import score
 from sci.carbon_intensity import get_carbon_intensity
+from events.schemas import AnalysisRequestEvent
+from events.kafka_producer import publish_analysis_request, get_producer
+from events.kafka_consumer import (
+    get_result as get_async_result,
+    set_result as set_async_result,
+    handle_message,
+)
 
 
 # ================================================================
@@ -62,6 +71,19 @@ app.add_middleware(
 
 # JWT Bearer 인증 스키마
 security = HTTPBearer()
+
+
+# ================================================================
+# Kafka InMemory Consumer 연결 (개발 환경)
+# ================================================================
+# InMemoryProducer에 Consumer 콜백 등록 → 발행 즉시 처리
+# 프로덕션: 별도 워커 프로세스(kafka_consumer.py)가 독립 실행
+@app.on_event("startup")
+async def _register_consumer():
+    """앱 시작 시 InMemory Consumer 콜백 등록"""
+    producer = get_producer()
+    if hasattr(producer, "add_listener"):
+        producer.add_listener(handle_message)
 
 
 # ================================================================
@@ -205,22 +227,96 @@ async def refresh_token(request: RefreshRequest):
 
 
 # ================================================================
-# 분석 엔드포인트
+# 비동기 분석 엔드포인트 (Kafka)
 # ================================================================
-@app.post("/analyze", response_model=AnalyzeResponse, tags=["분석"])
-async def analyze_code(
+@app.post("/analyze", tags=["분석"], status_code=202)
+async def analyze_async(
     request: AnalyzeRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """
-    코드 분석 요청 → SCI 점수 + 근거 + 개선 제안 반환
+    비동기 코드 분석 — Kafka 발행 → 202 즉시 응답
 
-    Rate Limiting 적용:
-    - free: 일 5회
-    - pro: 일 1000회
-    - admin: 무제한
+    흐름:
+    1. Rate Limit 확인
+    2. Kafka 토픽에 분석 요청 이벤트 발행
+    3. 202 Accepted + analysis_id 즉시 반환
+    4. 워커(Consumer)가 백그라운드에서 파이프라인 실행
+    5. 클라이언트는 GET /analyze/{id}로 결과 폴링
 
-    파이프라인: 코드 → Parser → Analyzer → Scorer → Response
+    K8s HPA 시연: 워커 Pod가 CPU 기준으로 자동 스케일링.
+    """
+    username = current_user["username"]
+    role = current_user["role"]
+
+    # Rate Limit 확인
+    allowed, rate_info = check_rate_limit(username, role)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "일일 분석 한도 초과",
+                "limit": rate_info["limit"],
+                "used": rate_info["used"],
+                "reset_at": rate_info["reset_at"],
+                "upgrade_hint": "프로 플랜으로 업그레이드하면 일 1000회까지 분석 가능합니다.",
+            },
+        )
+
+    # 분석 ID 생성
+    analysis_id = str(uuid.uuid4())[:8]
+
+    # pending 상태로 결과 저장소에 등록
+    from events.schemas import AnalysisResultEvent
+    pending = AnalysisResultEvent(analysis_id=analysis_id, status="pending")
+    set_async_result(analysis_id, pending.to_dict())
+
+    # Kafka 이벤트 발행
+    event = AnalysisRequestEvent(
+        analysis_id=analysis_id,
+        username=username,
+        source_code=request.source_code,
+        region=request.region,
+        functional_unit=request.functional_unit,
+    )
+    await publish_analysis_request(event)
+
+    # 사용량 증가
+    increment_usage(username)
+
+    # 이력 추가 (pending 상태)
+    if username not in _user_history:
+        _user_history[username] = []
+    _user_history[username].append({
+        "analysis_id": analysis_id,
+        "sci_score": 0,
+        "grade": "",
+        "total_lines": 0,
+        "analyzed_at": datetime.utcnow().isoformat() + "Z",
+    })
+
+    # 202 즉시 응답 — 클라이언트는 GET /analyze/{id}로 폴링
+    return {
+        "analysis_id": analysis_id,
+        "status": "accepted",
+        "message": "분석 요청이 접수되었습니다. GET /analyze/{id}로 결과를 확인하세요.",
+        "poll_url": f"/analyze/{analysis_id}",
+    }
+
+
+# ================================================================
+# 동기 분석 엔드포인트 (호환용)
+# ================================================================
+@app.post("/analyze/sync", response_model=AnalyzeResponse, tags=["분석"])
+async def analyze_sync(
+    request: AnalyzeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    동기 코드 분석 — 즉시 결과 반환 (STEP 4 호환)
+
+    Kafka를 거치지 않고 직접 파이프라인을 실행.
+    빠른 테스트, 소규모 코드 분석에 적합.
     """
     username = current_user["username"]
     role = current_user["role"]
@@ -323,11 +419,26 @@ async def get_analysis(
     analysis_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """분석 결과 조회"""
+    """
+    분석 결과 조회 (동기 + 비동기 모두 지원)
+
+    비동기 모드: status가 "pending"/"processing"/"completed"/"failed" 중 하나.
+    동기 모드: 항상 완료된 결과 반환.
+
+    클라이언트 폴링 패턴:
+      while status != "completed": sleep(1) → GET /analyze/{id}
+    """
+    # 비동기 결과 저장소 먼저 확인
+    result = get_async_result(analysis_id)
+    if result:
+        return result
+
+    # 동기 결과 저장소 확인 (STEP 4 호환)
     result = _analysis_store.get(analysis_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="분석 결과를 찾을 수 없습니다")
-    return result
+    if result:
+        return result
+
+    raise HTTPException(status_code=404, detail="분석 결과를 찾을 수 없습니다")
 
 
 @app.get("/history", response_model=list[HistoryItem], tags=["분석"])
