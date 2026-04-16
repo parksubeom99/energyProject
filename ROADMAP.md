@@ -10,7 +10,7 @@
 ```
 [x] STEP 0 — 환경 세팅 (완료 시 x 표시)
 [x] STEP 1 — SCI 공식 엔진
-[ ] STEP 2 — 파서 + 분석기
+[x] STEP 2 — 파서 + 분석기
 [ ] STEP 3 — 점수 산출 + 근거 생성
 [ ] STEP 4 — FastAPI + JWT + RBAC
 [ ] STEP 5 — Kafka 비동기 처리
