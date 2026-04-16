@@ -12,7 +12,7 @@
 [x] STEP 1 — SCI 공식 엔진
 [x] STEP 2 — 파서 + 분석기
 [x] STEP 3 — 점수 산출 + 근거 생성
-[ ] STEP 4 — FastAPI + JWT + RBAC
+[x] STEP 4 — FastAPI + JWT + RBAC
 [ ] STEP 5 — Kafka 비동기 처리
 [ ] STEP 6 — Claude API 최적화 (optimizer)
 [ ] STEP 7 — React 대시보드

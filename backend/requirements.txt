@@ -9,6 +9,7 @@ python-multipart==0.0.9
 # ===== L4 보안 (JWT + RBAC) =====
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1                  # passlib 호환 (4.1+ 버그)
 
 # ===== L6 데이터 (PostgreSQL + Redis) =====
 sqlalchemy==2.0.35
