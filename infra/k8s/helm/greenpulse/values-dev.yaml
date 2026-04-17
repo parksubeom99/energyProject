@@ -1,0 +1,35 @@
+# GreenPulse Helm — 개발 환경 오버라이드
+# 사용: helm install greenpulse . -f values-dev.yaml
+
+api:
+  replicaCount: 1
+  env:
+    DEBUG: "true"
+    JWT_SECRET: "greenpulse-dev-secret"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  replicaCount: 1
+
+hpa:
+  enabled: false  # 개발 환경에서는 HPA 비활성화
+
+ingress:
+  host: dev.greenpulse.local
+  tls: false

@@ -1,0 +1,23 @@
+# GreenPulse Helm Chart
+# ISO/IEC 21031:2024 SCI 기반 코드 에너지 분석 + AI 자동 최적화 플랫폼
+#
+# 면접 포인트:
+# "3개 프로젝트 중 유일한 K8s 실구현입니다.
+#  Helm으로 환경별(dev/prod) 설정을 분리하고,
+#  ArgoCD로 GitOps 배포를 자동화합니다."
+
+apiVersion: v2
+name: greenpulse
+description: SCI-based code energy analysis platform with AI optimization
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - sci
+  - carbon-intensity
+  - green-software
+  - code-analysis
+
+maintainers:
+  - name: Subeom

@@ -1,0 +1,61 @@
+# GreenPulse API 서버 Deployment
+# FastAPI + JWT + RBAC + Rate Limiting
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: greenpulse
+    component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app: greenpulse
+      component: api
+  template:
+    metadata:
+      labels:
+        app: greenpulse
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.api.port }}
+              protocol: TCP
+          env:
+            - name: DEBUG
+              value: {{ .Values.api.env.DEBUG | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: jwt-secret
+                  optional: true
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgres.username }}:$(DB_PASSWORD)@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: DEFAULT_CARBON_INTENSITY
+              value: {{ .Values.api.env.DEFAULT_CARBON_INTENSITY | quote }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          # 헬스체크 — K8s가 Pod 상태를 자동 관리
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.api.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.api.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10

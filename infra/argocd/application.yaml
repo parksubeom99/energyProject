@@ -1,0 +1,57 @@
+# ArgoCD Application — GreenPulse GitOps 배포
+#
+# ArgoCD가 이 YAML을 읽고:
+# 1. Git 레포의 Helm Chart를 감시
+# 2. 변경 감지 → 자동 동기화
+# 3. K8s 클러스터에 배포
+#
+# 면접 포인트:
+# "ArgoCD로 GitOps 배포를 구현했습니다.
+#  Git이 Single Source of Truth이고, main에 머지되면
+#  ArgoCD가 자동으로 K8s 클러스터를 동기화합니다.
+#  kubectl apply를 직접 실행하지 않습니다."
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: greenpulse
+  namespace: argocd
+  labels:
+    app: greenpulse
+  # 삭제 시 K8s 리소스도 정리
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Git 레포 정보
+    repoURL: https://github.com/Subeom/greenpulse.git
+    targetRevision: main
+    path: infra/k8s/helm/greenpulse
+
+    # Helm 설정
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml  # 프로덕션 오버라이드
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: greenpulse
+
+  syncPolicy:
+    # 자동 동기화 — Git 변경 시 자동 배포
+    automated:
+      prune: true       # 삭제된 리소스 정리
+      selfHeal: true    # 수동 변경 시 Git 상태로 복구
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+
+    # 재시도 정책
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

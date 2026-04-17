@@ -1,0 +1,96 @@
+# GreenPulse Helm — 공통 기본값
+# values-dev.yaml / values-prod.yaml에서 오버라이드
+#
+# 구조:
+#   api:      FastAPI 분석 API 서버
+#   worker:   Kafka Consumer 분석 워커
+#   frontend: React 대시보드
+#   kafka/postgres/redis: 외부 서비스 연결 정보
+
+# ===== 글로벌 =====
+global:
+  namespace: greenpulse
+  imageRegistry: ""  # ECR: 123456789.dkr.ecr.ap-northeast-2.amazonaws.com
+
+# ===== API 서버 (FastAPI) =====
+api:
+  replicaCount: 2
+  image:
+    repository: gp-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    DEBUG: "false"
+    JWT_SECRET: "change-me-in-production"
+    DEFAULT_CARBON_INTENSITY: "450"
+
+# ===== 분석 워커 (Kafka Consumer) =====
+# HPA 오토스케일링 대상: CPU 70% → 스케일아웃
+worker:
+  replicaCount: 2
+  image:
+    repository: gp-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  command: ["python", "-m", "events.kafka_consumer"]
+
+# ===== 프론트엔드 (React + nginx) =====
+frontend:
+  replicaCount: 1
+  image:
+    repository: gp-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 80
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ===== HPA 오토스케일링 =====
+hpa:
+  enabled: true
+  # 워커 HPA — 분석 부하에 따라 자동 스케일링
+  worker:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+# ===== Ingress =====
+ingress:
+  enabled: true
+  className: nginx
+  host: greenpulse.local
+  tls: false
+
+# ===== 외부 서비스 =====
+postgres:
+  host: gp-postgres
+  port: 5432
+  database: greenpulse
+  username: greenpulse
+
+redis:
+  host: gp-redis
+  port: 6379
+
+kafka:
+  bootstrapServers: gp-kafka:9092

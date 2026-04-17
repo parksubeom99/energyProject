@@ -1,0 +1,47 @@
+# GreenPulse Helm — 프로덕션 환경 오버라이드
+# 사용: helm install greenpulse . -f values-prod.yaml
+#
+# 면접 포인트:
+# "dev는 replica 1 + HPA off, prod는 replica 2 + HPA on(2→10).
+#  리소스 할당도 prod에서 2배 증가. 환경별 설정을 Helm values로 분리합니다."
+
+api:
+  replicaCount: 2
+  image:
+    pullPolicy: Always  # 프로덕션: 항상 최신 이미지 pull
+  env:
+    DEBUG: "false"
+    # JWT_SECRET은 K8s Secret으로 주입 (values에 하드코딩 금지)
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+worker:
+  replicaCount: 2
+  image:
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+frontend:
+  replicaCount: 2
+
+hpa:
+  enabled: true
+  worker:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+
+ingress:
+  host: greenpulse.example.com
+  tls: true

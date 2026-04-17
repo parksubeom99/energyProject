@@ -1,0 +1,44 @@
+# GreenPulse 분석 워커 Deployment
+# Kafka Consumer — 분석 파이프라인 실행
+#
+# 면접 포인트:
+# "워커를 API 서버와 분리하여 독립 스케일링합니다.
+#  분석 요청이 폭증해도 API 서버는 영향받지 않고,
+#  HPA가 CPU 70% 기준으로 워커 Pod를 2→10개로 자동 증설합니다."
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: greenpulse
+    component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      app: greenpulse
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: greenpulse
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.global.imageRegistry }}{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          command:
+            {{- toYaml .Values.worker.command | nindent 12 }}
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgres.username }}:$(DB_PASSWORD)@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_GROUP_ID
+              value: "greenpulse-worker"
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}

@@ -1,0 +1,18 @@
+# GreenPulse ConfigMap
+# 환경 변수 중앙 관리 (민감하지 않은 설정만)
+# 민감 정보(JWT_SECRET, DB_PASSWORD 등)는 K8s Secret 사용
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: greenpulse
+data:
+  APP_NAME: "GreenPulse"
+  APP_VERSION: "{{ .Chart.AppVersion }}"
+  DEFAULT_CARBON_INTENSITY: {{ .Values.api.env.DEFAULT_CARBON_INTENSITY | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.kafka.bootstrapServers | quote }}
+  KAFKA_TOPIC_ANALYSIS: "greenpulse.analysis.request"
+  KAFKA_TOPIC_RESULT: "greenpulse.analysis.result"
+  REDIS_URL: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"

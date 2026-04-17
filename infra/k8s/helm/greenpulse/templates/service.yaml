@@ -1,0 +1,42 @@
+# GreenPulse K8s Services
+# API + Frontend 서비스 노출
+---
+# API 서비스 — ClusterIP (Ingress에서 라우팅)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: greenpulse
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.api.port }}
+      targetPort: {{ .Values.api.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app: greenpulse
+    component: api
+---
+# Frontend 서비스
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-frontend
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: greenpulse
+    component: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: {{ .Values.frontend.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app: greenpulse
+    component: frontend
