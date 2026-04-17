@@ -1,0 +1,98 @@
+# GreenPulse CD — main 브랜치 push 시 배포
+# =============================================
+# 트리거: main 브랜치 push (CI 통과 후)
+# 단계: Docker build → ECR push → ArgoCD 동기화 트리거
+#
+# 면접 포인트:
+# "main에 머지되면 GitHub Actions가 Docker 이미지를 빌드하고
+#  ECR에 push합니다. ArgoCD가 ECR의 새 이미지를 감지하여
+#  K8s 클러스터에 자동 배포합니다. 완전한 GitOps 파이프라인입니다."
+#
+# 현재: ECR/ArgoCD는 주석 처리 (로컬 개발).
+# 프로덕션 전환 시 secrets 설정 후 주석 해제.
+
+name: GreenPulse CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  # AWS ECR 설정 (프로덕션에서 GitHub Secrets로 주입)
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ================================================================
+  # Job 1: Docker 이미지 빌드 + 태깅
+  # ================================================================
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    # CI가 먼저 통과해야 CD 실행
+    # needs: [backend-test]  # 같은 워크플로우면 사용
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- API 서버 이미지 ----
+      - name: Build API image
+        run: |
+          docker build -t gp-api:${{ env.IMAGE_TAG }} ./backend
+          docker tag gp-api:${{ env.IMAGE_TAG }} gp-api:latest
+          echo "✅ API 이미지 빌드: gp-api:${{ env.IMAGE_TAG }}"
+
+      # ---- 프론트엔드 이미지 ----
+      - name: Build Frontend image
+        run: |
+          docker build -t gp-frontend:${{ env.IMAGE_TAG }} ./frontend
+          docker tag gp-frontend:${{ env.IMAGE_TAG }} gp-frontend:latest
+          echo "✅ Frontend 이미지 빌드: gp-frontend:${{ env.IMAGE_TAG }}"
+
+      # ---- ECR Push (프로덕션 전환 시 주석 해제) ----
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ env.AWS_REGION }}
+      #
+      # - name: Login to ECR
+      #   uses: aws-actions/amazon-ecr-login@v2
+      #
+      # - name: Push to ECR
+      #   run: |
+      #     docker tag gp-api:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/gp-api:${{ env.IMAGE_TAG }}
+      #     docker tag gp-frontend:${{ env.IMAGE_TAG }} ${{ env.ECR_REGISTRY }}/gp-frontend:${{ env.IMAGE_TAG }}
+      #     docker push ${{ env.ECR_REGISTRY }}/gp-api:${{ env.IMAGE_TAG }}
+      #     docker push ${{ env.ECR_REGISTRY }}/gp-frontend:${{ env.IMAGE_TAG }}
+      #     echo "✅ ECR Push 완료"
+
+      - name: Summary
+        run: |
+          echo "## 빌드 완료" >> $GITHUB_STEP_SUMMARY
+          echo "- API: gp-api:${{ env.IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: gp-frontend:${{ env.IMAGE_TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+
+  # ================================================================
+  # Job 2: ArgoCD 동기화 트리거 (프로덕션 전환 시 주석 해제)
+  # ================================================================
+  # deploy:
+  #   name: ArgoCD Sync
+  #   runs-on: ubuntu-latest
+  #   needs: build-and-push
+  #
+  #   steps:
+  #     - name: Trigger ArgoCD sync
+  #       run: |
+  #         # ArgoCD CLI 또는 API로 애플리케이션 동기화
+  #         # argocd app sync greenpulse --server $ARGOCD_SERVER
+  #         echo "ArgoCD 동기화 트리거 완료"
+  #
+  #     - name: Verify deployment
+  #       run: |
+  #         # kubectl rollout status deployment/gp-api -n greenpulse
+  #         echo "배포 상태 확인 완료"

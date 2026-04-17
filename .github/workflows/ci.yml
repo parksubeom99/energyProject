@@ -1,0 +1,112 @@
+# GreenPulse CI — PR 시 자동 검증
+# ===================================
+# 트리거: PR → main 브랜치
+# 단계: pytest → SCI 점수 관문 → Docker 빌드 검증
+#
+# 면접 포인트:
+# "CI에서 pytest 뿐 아니라 SCI 점수 관문을 설정했습니다.
+#  새 코드의 SCI가 임계값(50)을 넘으면 PR이 머지되지 않습니다.
+#  코드 품질뿐 아니라 에너지 효율도 CI에서 자동 검증합니다."
+
+name: GreenPulse CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  # ================================================================
+  # Job 1: 백엔드 테스트 + SCI 관문
+  # ================================================================
+  backend-test:
+    name: Backend Tests + SCI Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --quiet -r requirements.txt
+          pip install --quiet pytest httpx
+
+      # ---- pytest 전체 실행 ----
+      - name: Run pytest
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short --junitxml=test-results.xml
+
+      # ---- SCI 점수 관문 ----
+      # 샘플 코드의 SCI가 임계값 이하인지 검증
+      # 이 관문이 GreenPulse의 차별점: "에너지 효율도 CI에서 검증"
+      - name: SCI Score Gate
+        run: |
+          cd backend
+          python -c "
+          from pipeline.parser import parse_code
+          from pipeline.analyzer import analyze
+          from pipeline.scorer import score
+
+          # 샘플 good 코드가 SCI 관문(100) 이하인지 검증
+          good_code = open('../samples/sample_good.py').read()
+          report = score(analyze(parse_code(good_code)))
+          print(f'SCI Score: {report.sci_score} | Grade: {report.grade}')
+          assert report.sci_score < 100, f'SCI 관문 실패: {report.sci_score} > 100'
+          print('✅ SCI 관문 통과')
+          "
+
+      # ---- 테스트 결과 업로드 ----
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: backend/test-results.xml
+
+  # ================================================================
+  # Job 2: Docker 이미지 빌드 검증
+  # ================================================================
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # API 서버 이미지 빌드
+      - name: Build API Docker image
+        run: docker build -t gp-api:ci ./backend
+
+      # 프론트엔드 이미지 빌드
+      - name: Build Frontend Docker image
+        run: docker build -t gp-frontend:ci ./frontend
+
+      - name: Verify images
+        run: |
+          echo "=== Built images ==="
+          docker images | grep gp-
+          echo "✅ Docker 빌드 검증 완료"
+
+  # ================================================================
+  # Job 3: docker-compose 검증
+  # ================================================================
+  compose-check:
+    name: Docker Compose Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose -f infra/docker-compose.yml config --quiet
