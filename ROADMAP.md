@@ -14,7 +14,7 @@
 [x] STEP 3 — 점수 산출 + 근거 생성
 [x] STEP 4 — FastAPI + JWT + RBAC
 [x] STEP 5 — Kafka 비동기 처리
-[ ] STEP 6 — Claude API 최적화 (optimizer)
+[x] STEP 6 — Claude API 최적화 (optimizer)
 [ ] STEP 7 — React 대시보드
 [ ] STEP 8 — GitHub Actions CI/CD
 [ ] STEP 9 — K8s Helm + ArgoCD
