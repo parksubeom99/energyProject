@@ -18,6 +18,12 @@
 검증: Before/After를 동일 파이프라인으로 재분석하여 실측
 ```
 
+## 스크린샷
+
+| SCI 점수 게이지 | 3축 에너지 분석 | Before/After 비교 |
+|:---:|:---:|:---:|
+| ![gauge](docs/screens/score_gauge.png) | ![axis](docs/screens/axis_breakdown.png) | ![diff](docs/screens/code_diff.png) |
+
 ## 왜 만들었는가
 
 ICT 산업은 전 세계 온실가스 배출의 2.1~3.9%를 차지하며, 2040년까지 14%로 증가할 전망입니다.
@@ -79,7 +85,7 @@ R = 기능 단위               — API 호출 1건 기준
 | AI | Claude API (Mock + Real) | 최적화 코드 생성 + Protocol 패턴 |
 | Infra | K8s(EKS) + Helm + ArgoCD | HPA 오토스케일링 + GitOps |
 | CI/CD | GitHub Actions | pytest + SCI 관문 + Docker build |
-| Test | pytest 130+ | SCI 공식, 파이프라인, API, Kafka, E2E, Pearson r |
+| Test | pytest 141 tests | SCI 공식, 파이프라인, API, Kafka, E2E, Pearson r |
 
 ## 프로젝트 구조
 
@@ -100,7 +106,7 @@ backend/
 │   ├── carbon_intensity.py    # 17개 국가 + 17개 클라우드 리전
 │   └── embodied_carbon.py     # 12개 인스턴스 타입별 내재 탄소
 ├── events/                    # Kafka 비동기 처리
-└── tests/                     # 130+ 테스트
+└── tests/                     # 141 테스트
 
 frontend/
 ├── src/components/
