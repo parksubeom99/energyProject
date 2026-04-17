@@ -152,3 +152,61 @@ async def handle_message(topic: str, value: bytes) -> None:
 
     # 결과 저장 (GET /analyze/{id} 폴링 대상)
     set_result(event.analysis_id, result.to_dict())
+
+
+# ================================================================
+# 워커 메인 — K8s Pod 진입점
+# ================================================================
+# Helm: command: ["python", "-m", "events.kafka_consumer"]
+# 프로덕션: aiokafka.AIOKafkaConsumer로 Kafka 토픽 지속 소비
+# 개발: InMemoryProducer 콜백으로 동작하므로 이 블록은 미사용
+if __name__ == "__main__":
+    import asyncio
+    import signal
+    import sys
+
+    print("[Worker] GreenPulse 분석 워커 시작")
+    print(f"[Worker] Kafka: {settings.KAFKA_BOOTSTRAP_SERVERS}")
+    print(f"[Worker] Topic: {settings.KAFKA_TOPIC_ANALYSIS}")
+    print(f"[Worker] Group: {settings.KAFKA_GROUP_ID}")
+
+    # 프로덕션 Kafka Consumer 루프
+    # aiokafka가 설치된 환경에서만 동작
+    async def run_consumer():
+        try:
+            from aiokafka import AIOKafkaConsumer
+
+            consumer = AIOKafkaConsumer(
+                settings.KAFKA_TOPIC_ANALYSIS,
+                bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
+                group_id=settings.KAFKA_GROUP_ID,
+                auto_offset_reset="earliest",
+            )
+            await consumer.start()
+            print("[Worker] Kafka Consumer 연결 완료. 메시지 대기 중...")
+
+            try:
+                async for msg in consumer:
+                    print(f"[Worker] 메시지 수신: key={msg.key}")
+                    await handle_message(msg.topic, msg.value)
+            finally:
+                await consumer.stop()
+
+        except ImportError:
+            print("[Worker] aiokafka 미설치 — 대기 모드 (개발 환경)")
+            # 개발 환경: aiokafka 없이 대기
+            while True:
+                await asyncio.sleep(60)
+
+    # Graceful shutdown
+    loop = asyncio.new_event_loop()
+
+    def shutdown(sig, frame):
+        print(f"[Worker] {sig} 수신. 종료 중...")
+        loop.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+
+    loop.run_until_complete(run_consumer())

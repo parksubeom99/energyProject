@@ -18,7 +18,7 @@
 [x] STEP 7 — React 대시보드
 [x] STEP 8 — GitHub Actions CI/CD
 [x] STEP 9 — K8s Helm + ArgoCD
-[ ] STEP 10 — 통합 테스트 + README
+[x] STEP 10 — 통합 테스트 + README
 ```
 
 ---
