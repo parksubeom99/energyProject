@@ -15,7 +15,7 @@
 [x] STEP 4 — FastAPI + JWT + RBAC
 [x] STEP 5 — Kafka 비동기 처리
 [x] STEP 6 — Claude API 최적화 (optimizer)
-[ ] STEP 7 — React 대시보드
+[x] STEP 7 — React 대시보드
 [ ] STEP 8 — GitHub Actions CI/CD
 [ ] STEP 9 — K8s Helm + ArgoCD
 [ ] STEP 10 — 통합 테스트 + README

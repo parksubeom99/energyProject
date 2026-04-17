@@ -1,0 +1,27 @@
+{
+  "name": "greenpulse-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GreenPulse SCI 대시보드 — ISO/IEC 21031:2024 기반 코드 에너지 분석",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.0",
+    "@tanstack/react-query": "^5.50.0",
+    "recharts": "^2.12.0",
+    "react-diff-viewer-continued": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite": "^5.4.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0"
+  }
+}
