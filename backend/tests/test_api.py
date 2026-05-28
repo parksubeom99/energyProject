@@ -233,6 +233,23 @@ class TestAnalyze:
         ).json()
         assert fr["sci_score"] < kr["sci_score"]
 
+    def test_analyze_cost_fields_present(self):
+        """덩어리 2: 비용 노출 필드 (estimated_cost / cost_per_kwh / cost_currency)"""
+        tokens = _login()
+        resp = client.post(
+            "/analyze/sync",
+            json={"source_code": BAD_CODE, "region": "KR"},
+            headers=_auth_header(tokens["access_token"]),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "estimated_cost" in data
+        assert "cost_per_kwh" in data
+        assert "cost_currency" in data
+        assert data["estimated_cost"] >= 0
+        assert data["cost_per_kwh"] > 0
+        assert data["cost_currency"] == "USD"
+
     def test_analyze_syntax_error(self):
         """문법 오류 코드 → 422"""
         tokens = _login()

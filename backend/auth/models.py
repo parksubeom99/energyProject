@@ -115,6 +115,10 @@ class AnalyzeResponse(BaseModel):
     total_lines: int
     total_energy_kwh: float
     total_carbon_gco2: float
+    # === 비용 노출 (덩어리 2) ===
+    estimated_cost: float       # 1회당 비용 (E x P)
+    cost_per_kwh: float          # 적용된 지역 전기 단가 (USD/kWh)
+    cost_currency: str           # 통화 코드 (현재 "USD" 고정)
     analyzed_at: str
 
 

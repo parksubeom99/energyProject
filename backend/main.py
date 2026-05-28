@@ -37,6 +37,7 @@ from pipeline.parser import parse_code
 from pipeline.analyzer import analyze
 from pipeline.scorer import score
 from sci.carbon_intensity import get_carbon_intensity
+from sci.cost import estimate_cost
 from events.schemas import AnalysisRequestEvent
 from events.kafka_producer import publish_analysis_request, get_producer
 from events.kafka_consumer import (
@@ -352,6 +353,13 @@ async def analyze_sync(
     )
     report = score(analysis)
 
+    # === 비용 산출 (덩어리 2 — 1급 지표) ===
+    # E (kWh) x P (USD/kWh) = 1회당 비용. region은 요청 인자 그대로 재사용.
+    cost_result = estimate_cost(
+        energy_kwh=report.total_energy_kwh,
+        region=request.region,
+    )
+
     # === 결과 저장 ===
     analysis_id = str(uuid.uuid4())[:8]
     now = datetime.utcnow().isoformat() + "Z"
@@ -391,6 +399,10 @@ async def analyze_sync(
         total_lines=report.total_lines,
         total_energy_kwh=report.total_energy_kwh,
         total_carbon_gco2=report.total_carbon_gco2,
+        # === 비용 노출 (덩어리 2) ===
+        estimated_cost=cost_result.estimated_cost,
+        cost_per_kwh=cost_result.cost_per_kwh,
+        cost_currency=cost_result.currency,
         analyzed_at=now,
     )
 
