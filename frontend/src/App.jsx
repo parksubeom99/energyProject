@@ -67,6 +67,9 @@ export default function App() {
   const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'greenpulse' });
   const [error, setError] = useState('');
 
+  // 덩어리 2 보완: 월간 실행 횟수 — 1회·월·년 3단 스케일 환산용 (프론트 곱셈)
+  const [monthlyExecutions, setMonthlyExecutions] = useState(1_000_000);
+
   // 분석 이력 (React Query — 서버 상태)
   const { data: history = [] } = useQuery({
     queryKey: ['history'],
@@ -207,6 +210,11 @@ export default function App() {
                   gradeLabel={r.grade_label}
                   gradeColor={r.grade_color}
                   summaryText={r.summary_text}
+                  energyKwh={r.total_energy_kwh}
+                  estimatedCost={r.estimated_cost}
+                  costCurrency={r.cost_currency}
+                  monthlyExecutions={monthlyExecutions}
+                  onMonthlyExecutionsChange={setMonthlyExecutions}
                 />
               </div>
               <div className="lg:col-span-2">
@@ -217,15 +225,15 @@ export default function App() {
               </div>
             </div>
 
-            {/* 2행: CodeDiff (Before/After) — STEP 6 연동 시 표시 */}
-            <CodeDiff
+            {/* 2행: CodeDiff (Before/After) — 덩어리 3에서 /optimize 연결 시 복구 예정 */}
+            {/* <CodeDiff
               beforeCode={sourceCode}
               afterCode=""
               beforeSci={r.sci_score}
               afterSci={0}
               reductionPct={0}
               appliedFixes={[]}
-            />
+            /> */}
           </>
         )}
 
