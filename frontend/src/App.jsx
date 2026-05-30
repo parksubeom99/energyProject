@@ -18,7 +18,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import useAnalysisStore from './store/analysisStore';
-import { login as apiLogin, analyzeCode, getHistory } from './api/client';
+import { login as apiLogin, analyzeCode, optimizeCode, getHistory } from './api/client';
 import ScoreGauge from './components/ScoreGauge';
 import AxisBreakdown from './components/AxisBreakdown';
 import CodeDiff from './components/CodeDiff';
@@ -62,6 +62,8 @@ export default function App() {
     currentResult, setCurrentResult,
     region, setRegion,
     isAnalyzing, setIsAnalyzing,
+    optimizeResult, setOptimizeResult,
+    isOptimizing, setIsOptimizing,
   } = useAnalysisStore();
 
   const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'greenpulse' });
@@ -102,6 +104,22 @@ export default function App() {
       setError(err.message);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // ===== 최적화 실행 (덩어리 5) =====
+  // 분석과 분리된 의도적 무거운 호출 — Claude(또는 Mock)가 코드 변환
+  const handleOptimize = async () => {
+    if (!sourceCode.trim()) return;
+    setIsOptimizing(true);
+    setError('');
+    try {
+      const result = await optimizeCode(sourceCode, region);
+      setOptimizeResult(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsOptimizing(false);
     }
   };
 
@@ -188,6 +206,11 @@ export default function App() {
                                  hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition">
                 {isAnalyzing ? '분석 중...' : '🔍 분석 시작'}
               </button>
+              <button onClick={handleOptimize} disabled={isOptimizing || !sourceCode.trim()}
+                      className="bg-emerald-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium
+                                 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                {isOptimizing ? '최적화 중...' : '🚀 최적화'}
+              </button>
             </div>
           </div>
           <textarea value={sourceCode} onChange={(e) => setSourceCode(e.target.value)}
@@ -225,15 +248,33 @@ export default function App() {
               </div>
             </div>
 
-            {/* 2행: CodeDiff (Before/After) — 덩어리 3에서 /optimize 연결 시 복구 예정 */}
-            {/* <CodeDiff
-              beforeCode={sourceCode}
-              afterCode=""
-              beforeSci={r.sci_score}
-              afterSci={0}
-              reductionPct={0}
-              appliedFixes={[]}
-            /> */}
+          </>
+        )}
+
+        {/* 2행: CodeDiff (Before/After) — 덩어리 5: /optimize 결과 바인딩
+            분석(currentResult) 없이 최적화만 눌러도 표시되도록 r 조건 밖으로 분리 */}
+        {optimizeResult && (
+          <>
+            <CodeDiff
+              beforeCode={optimizeResult.original_code}
+              afterCode={optimizeResult.optimized_code}
+              beforeSci={optimizeResult.before_sci}
+              afterSci={optimizeResult.after_sci}
+              reductionPct={optimizeResult.sci_reduction_pct}
+              appliedFixes={optimizeResult.applied_fixes}
+            />
+            {/* 비용 절감 줄 (덩어리 5 — scope: 줄 1개로 고정) */}
+            <div className="text-sm text-gray-600 text-center">
+              💰 1회당{' '}
+              <span className="font-semibold text-green-700">
+                ${optimizeResult.cost_reduction.toFixed(8)} {optimizeResult.cost_currency}
+              </span>
+              {' '}절감 (
+              <span className="font-semibold text-green-600">
+                -{optimizeResult.cost_reduction_pct.toFixed(1)}%
+              </span>
+              )
+            </div>
           </>
         )}
 

@@ -11,6 +11,7 @@
  * - POST /analyze        → analyzeAsync()
  * - GET  /analyze/{id}   → getAnalysis()
  * - GET  /history        → getHistory()
+ * - POST /optimize       → optimizeCode()  (덩어리 4/5)
  */
 
 const API_BASE = '/api';
@@ -150,5 +151,28 @@ export async function getAnalysis(analysisId) {
 export async function getHistory() {
   const resp = await authFetch('/history');
   if (!resp.ok) throw new Error('이력 조회 실패');
+  return resp.json();
+}
+
+// ================================================================
+// 최적화 API (덩어리 4/5)
+// ================================================================
+/**
+ * 코드 최적화 — parse→analyze→score→optimize→verify 통합 호출
+ * 응답: { original_code, optimized_code, before_sci, after_sci,
+ *         sci_reduction_pct, applied_fixes, before_cost, after_cost,
+ *         cost_reduction, cost_reduction_pct, cost_currency, ... }
+ */
+export async function optimizeCode(sourceCode, region = 'KR') {
+  const resp = await authFetch('/optimize', {
+    method: 'POST',
+    body: JSON.stringify({ source_code: sourceCode, region }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json();
+    throw new Error(err.detail?.error || err.detail || '최적화 실패');
+  }
+
   return resp.json();
 }

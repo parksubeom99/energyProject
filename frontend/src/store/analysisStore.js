@@ -41,6 +41,14 @@ const useAnalysisStore = create((set) => ({
   // ===== 분석 진행 상태 =====
   isAnalyzing: false,
   setIsAnalyzing: (v) => set({ isAnalyzing: v }),
+
+  // ===== 최적화 결과 + 진행 상태 (덩어리 5) =====
+  // /optimize 응답 — CodeDiff Before/After 바인딩용
+  optimizeResult: null,
+  setOptimizeResult: (result) => set({ optimizeResult: result }),
+
+  isOptimizing: false,
+  setIsOptimizing: (v) => set({ isOptimizing: v }),
 }));
 
 export default useAnalysisStore;
