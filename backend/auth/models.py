@@ -129,3 +129,48 @@ class HistoryItem(BaseModel):
     grade: str
     total_lines: int
     analyzed_at: str
+
+
+# ================================================================
+# 최적화 요청/응답 모델 (덩어리 4)
+# ================================================================
+class OptimizeRequest(BaseModel):
+    """코드 최적화 요청 — parse→analyze→score→optimize→verify 통합"""
+    source_code: str = Field(..., min_length=1, description="최적화할 Python 코드")
+    region: str = Field(default="KR", description="지역 코드 (탄소 강도/단가)")
+    functional_unit: int = Field(default=1, ge=1, description="기능 단위 (R)")
+
+
+class OptimizeResponse(BaseModel):
+    """최적화 응답 — Before/After SCI + 비용 절감 flat 스키마"""
+    analysis_id: str
+    status: str                     # "verified" | "no_improvement" | "failed"
+
+    # Before (원본)
+    before_sci: float
+    before_grade: str
+    before_energy_kwh: float
+    before_cost: float
+
+    # After (최적화)
+    after_sci: float
+    after_grade: str
+    after_energy_kwh: float
+    after_cost: float
+
+    # 비교 (SCI + 비용)
+    sci_reduction: float
+    sci_reduction_pct: float
+    cost_reduction: float
+    cost_reduction_pct: float
+
+    # 코드 (덩어리 5 CodeDiff 입력)
+    original_code: str
+    optimized_code: str
+
+    # 메타
+    is_valid: bool
+    applied_fixes: list[str] = []
+    error_message: str = ""
+    cost_currency: str = "USD"
+    optimized_at: str

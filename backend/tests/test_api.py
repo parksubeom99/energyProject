@@ -290,6 +290,76 @@ class TestAnalyze:
 
 
 # ================================================================
+# 최적화 엔드포인트 테스트 (덩어리 4)
+# ================================================================
+class TestOptimize:
+    def test_optimize_basic(self):
+        """★ /optimize: Before/After SCI + cost_reduction + 코드 필드 모두 존재"""
+        tokens = _login()
+        resp = client.post(
+            "/optimize",
+            json={"source_code": BAD_CODE},
+            headers=_auth_header(tokens["access_token"]),
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        # Before/After SCI 필드
+        assert "before_sci" in data
+        assert "after_sci" in data
+        assert "sci_reduction" in data
+        assert "sci_reduction_pct" in data
+        # 비용 필드
+        assert "before_cost" in data
+        assert "after_cost" in data
+        assert "cost_reduction" in data
+        assert "cost_reduction_pct" in data
+        assert data["cost_currency"] == "USD"
+        # 코드 필드 (덩어리 5 CodeDiff 입력)
+        assert "original_code" in data
+        assert "optimized_code" in data
+        assert data["original_code"]  # 비어있지 않음
+        # 메타
+        assert data["status"] in ("verified", "no_improvement", "failed")
+        assert "is_valid" in data
+        assert isinstance(data["applied_fixes"], list)
+
+    def test_optimize_no_auth(self):
+        """토큰 없이 /optimize → 401/403"""
+        resp = client.post("/optimize", json={"source_code": "x = 1"})
+        assert resp.status_code in (401, 403)
+
+    def test_optimize_syntax_error(self):
+        """문법 오류 코드 → 422"""
+        tokens = _login()
+        resp = client.post(
+            "/optimize",
+            json={"source_code": "def broken(:\n  pass"},
+            headers=_auth_header(tokens["access_token"]),
+        )
+        assert resp.status_code == 422
+
+    def test_optimize_rate_limit(self):
+        """free user 6번째 /optimize → 429 (/analyze/sync와 limit 공유)"""
+        tokens = _login("user", "greenpulse")
+        headers = _auth_header(tokens["access_token"])
+        # 5회 성공
+        for i in range(5):
+            resp = client.post(
+                "/optimize",
+                json={"source_code": f"x = {i}"},
+                headers=headers,
+            )
+            assert resp.status_code == 200, f"요청 {i+1} 실패: {resp.text}"
+        # 6번째 → 429
+        resp = client.post(
+            "/optimize",
+            json={"source_code": "x = 999"},
+            headers=headers,
+        )
+        assert resp.status_code == 429
+
+
+# ================================================================
 # Rate Limiting 테스트
 # ================================================================
 class TestRateLimit:

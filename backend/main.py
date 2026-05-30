@@ -27,6 +27,7 @@ from auth.models import (
     TokenRequest, TokenResponse, RefreshRequest,
     AnalyzeRequest, AnalyzeResponse, HistoryItem,
     UserResponse, Role,
+    OptimizeRequest, OptimizeResponse,
 )
 from auth.jwt_handler import (
     create_access_token, create_refresh_token,
@@ -36,6 +37,8 @@ from auth.rbac import check_rate_limit, increment_usage
 from pipeline.parser import parse_code
 from pipeline.analyzer import analyze
 from pipeline.scorer import score
+from pipeline.optimizer import optimize
+from pipeline.verifier import verify
 from sci.carbon_intensity import get_carbon_intensity
 from sci.cost import estimate_cost
 from events.schemas import AnalysisRequestEvent
@@ -419,6 +422,117 @@ async def analyze_sync(
         "total_lines": report.total_lines,
         "analyzed_at": now,
     })
+
+    # 사용량 증가
+    increment_usage(username)
+
+    return response_data
+
+
+# ================================================================
+# 최적화 엔드포인트 (덩어리 4) — parse→analyze→score→optimize→verify 통합
+# ================================================================
+@app.post("/optimize", response_model=OptimizeResponse, tags=["최적화"])
+async def optimize_endpoint(
+    request: OptimizeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    코드 최적화 — Before/After SCI + 비용 절감 산출
+
+    흐름:
+    1. parse → analyze → score 로 ScoreReport 생성
+    2. optimize(report, source_code) 로 최적화 코드 생성 (Mock 폴백)
+    3. verify(optimization) 로 Before/After SCI 검증
+    4. estimate_cost 로 Before/After 비용 산출 (덩어리 2 재사용)
+    """
+    username = current_user["username"]
+    role = current_user["role"]
+
+    # === Rate Limit 확인 (/analyze/sync 와 동일 정책) ===
+    allowed, rate_info = check_rate_limit(username, role)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "일일 분석 한도 초과",
+                "limit": rate_info["limit"],
+                "used": rate_info["used"],
+                "reset_at": rate_info["reset_at"],
+                "upgrade_hint": "프로 플랜으로 업그레이드하면 일 1000회까지 분석 가능합니다.",
+            },
+        )
+
+    # === 파싱 ===
+    parsed = parse_code(request.source_code)
+    if parsed.errors:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "코드 파싱 실패", "errors": parsed.errors},
+        )
+
+    # === 분석 + 스코어 ===
+    carbon_intensity = get_carbon_intensity(request.region)
+    analysis = analyze(
+        parsed,
+        carbon_intensity=carbon_intensity,
+        functional_unit=request.functional_unit,
+    )
+    report = score(analysis)
+
+    # === 최적화 (Mock 자동 폴백 — CLAUDE_API_KEY 없으면 MockClaudeClient) ===
+    optimization = optimize(report, request.source_code)
+
+    # === Before/After 검증 (verifier가 동일 파이프라인 재실행) ===
+    verification = verify(
+        optimization,
+        carbon_intensity=carbon_intensity,
+        functional_unit=request.functional_unit,
+    )
+
+    # === Before/After 비용 산출 (덩어리 2 estimate_cost 재사용) ===
+    before_cost_result = estimate_cost(
+        energy_kwh=verification.before_report.total_energy_kwh,
+        region=request.region,
+    )
+    after_cost_result = estimate_cost(
+        energy_kwh=verification.after_report.total_energy_kwh,
+        region=request.region,
+    )
+
+    cost_reduction = before_cost_result.estimated_cost - after_cost_result.estimated_cost
+    cost_reduction_pct = (
+        (cost_reduction / before_cost_result.estimated_cost * 100.0)
+        if before_cost_result.estimated_cost > 0
+        else 0.0
+    )
+
+    analysis_id = str(uuid.uuid4())[:8]
+    now = datetime.utcnow().isoformat() + "Z"
+
+    response_data = OptimizeResponse(
+        analysis_id=analysis_id,
+        status=verification.status,
+        before_sci=verification.before_sci,
+        before_grade=verification.before_grade,
+        before_energy_kwh=verification.before_report.total_energy_kwh,
+        before_cost=before_cost_result.estimated_cost,
+        after_sci=verification.after_sci,
+        after_grade=verification.after_grade,
+        after_energy_kwh=verification.after_report.total_energy_kwh,
+        after_cost=after_cost_result.estimated_cost,
+        sci_reduction=verification.sci_reduction,
+        sci_reduction_pct=verification.sci_reduction_pct,
+        cost_reduction=round(cost_reduction, 10),
+        cost_reduction_pct=round(cost_reduction_pct, 4),
+        original_code=optimization.original_code,
+        optimized_code=optimization.optimized_code,
+        is_valid=optimization.is_valid,
+        applied_fixes=optimization.applied_fixes,
+        error_message=optimization.error_message,
+        cost_currency=before_cost_result.currency,
+        optimized_at=now,
+    )
 
     # 사용량 증가
     increment_usage(username)
