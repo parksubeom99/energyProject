@@ -70,7 +70,6 @@ services:
         condition: service_healthy
     ports:
       - "9092:9092"
-      - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -115,6 +114,39 @@ services:
     volumes:
       - ../backend:/app    # 개발 시 코드 변경 즉시 반영 (hot reload)
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - gp-network
+
+  # ===== 분석 워커 (Kafka Consumer) — L7 메시징 =====
+  # api와 동일 이미지(build context) 재사용, command만 다름 (K8s deployment-worker.yaml 1:1 포팅)
+  # 로컬 E2E 차단 해소: API → Kafka(greenpulse.analysis.request) → worker → 결과 저장소
+  # K8s 시뮬레이션: HPA로 워커만 독립 스케일아웃되는 구조의 로컬 검증
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: gp-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://greenpulse:greenpulse@postgres:5432/greenpulse
+      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_GROUP_ID=greenpulse-worker
+      - CLAUDE_API_KEY=${CLAUDE_API_KEY:-}
+    volumes:
+      - ../backend:/app    # 개발 시 코드 변경 즉시 반영 (재기동은 수동)
+    command: ["python", "-m", "events.kafka_consumer"]
+    # worker는 HTTP 엔드포인트 없는 백그라운드 Kafka Consumer —
+    # backend/Dockerfile의 :8000/health HEALTHCHECK 부적합 → 명시적 비활성화
+    healthcheck:
+      disable: true
     networks:
       - gp-network
 
