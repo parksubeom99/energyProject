@@ -1,4 +1,4 @@
-# ArgoCD Application — GreenPulse GitOps 배포
+# ArgoCD Application — energyProject GitOps 배포
 #
 # ArgoCD가 이 YAML을 읽고:
 # 1. Git 레포의 Helm Chart를 감시
@@ -25,7 +25,7 @@ spec:
 
   source:
     # Git 레포 정보
-    repoURL: https://github.com/Subeom/greenpulse.git
+    repoURL: https://github.com/parksubeom99/energyProject.git
     targetRevision: main
     path: infra/k8s/helm/greenpulse
 

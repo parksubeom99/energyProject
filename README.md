@@ -1,4 +1,4 @@
-# GreenPulse
+# energyProject
 
 **ISO/IEC 21031:2024 SCI 기반 코드 에너지 분석 + AI 자동 최적화 플랫폼**
 
@@ -36,7 +36,7 @@ Green Software Foundation은 이에 대응하여 **SCI(Software Carbon Intensity
 |-----------|---------|-----------|
 | CodeCarbon | 런타임 전력 측정 | 코드 분석, 최적화 제안 |
 | SonarQube | 코드 스멜 탐지 | 에너지/탄소 측정 |
-| **GreenPulse** | **코드 정적 분석 + SCI 점수 + AI 최적화 + Before/After 검증** | |
+| **energyProject** | **코드 정적 분석 + SCI 점수 + AI 최적화 + Before/After 검증** | |
 
 ## SCI 공식 — ISO/IEC 21031:2024
 

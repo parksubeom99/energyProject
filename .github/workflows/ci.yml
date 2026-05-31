@@ -1,4 +1,4 @@
-# GreenPulse CI — PR 시 자동 검증
+# energyProject CI — PR 시 자동 검증
 # ===================================
 # 트리거: PR → main 브랜치
 # 단계: pytest → SCI 점수 관문 → Docker 빌드 검증
@@ -8,7 +8,7 @@
 #  새 코드의 SCI가 임계값(50)을 넘으면 PR이 머지되지 않습니다.
 #  코드 품질뿐 아니라 에너지 효율도 CI에서 자동 검증합니다."
 
-name: GreenPulse CI
+name: energyProject CI
 
 on:
   pull_request:
@@ -47,7 +47,7 @@ jobs:
 
       # ---- SCI 점수 관문 ----
       # 샘플 코드의 SCI가 임계값 이하인지 검증
-      # 이 관문이 GreenPulse의 차별점: "에너지 효율도 CI에서 검증"
+      # 이 관문이 energyProject의 차별점: "에너지 효율도 CI에서 검증"
       - name: SCI Score Gate
         run: |
           cd backend

@@ -1,4 +1,4 @@
-# GreenPulse CD — main 브랜치 push 시 배포
+# energyProject CD — main 브랜치 push 시 배포
 # =============================================
 # 트리거: main 브랜치 push (CI 통과 후)
 # 단계: Docker build → ECR push → ArgoCD 동기화 트리거
@@ -11,7 +11,7 @@
 # 현재: ECR/ArgoCD는 주석 처리 (로컬 개발).
 # 프로덕션 전환 시 secrets 설정 후 주석 해제.
 
-name: GreenPulse CD
+name: energyProject CD
 
 on:
   push:

@@ -1,4 +1,4 @@
-# GreenPulse — 소프트웨어 탄소 강도 분석 + AI 자동 최적화 플랫폼
+# energyProject — 소프트웨어 탄소 강도 분석 + AI 자동 최적화 플랫폼
 
 > **"코드를 넣으면 ISO 국제 표준(SCI) 기반 탄소 강도 점수가 나오고, AI가 최적화 코드를 산출한다"**
 > 설계 원칙: 국제 표준 기반 → 정량 분석 → AI 최적화 → Before/After 검증 → CI 관문화
@@ -18,13 +18,13 @@ Green Software Foundation은 이 문제에 대응하여 **SCI(Software Carbon In
 - Cloud Carbon Footprint: 클라우드 비용 기반 추정 (코드 분석 없음)
 - SonarQube: 코드 품질은 보지만 에너지/탄소는 측정 안 함
 
-### GreenPulse의 위치
+### energyProject의 위치
 | 기존 도구 | 하는 것 | 못하는 것 |
 |-----------|---------|-----------|
 | CodeCarbon | 런타임 전력 측정 | 코드 분석, 최적화 제안 |
 | SonarQube | 코드 스멜 탐지 | 에너지/탄소 측정 |
 | Cloud Carbon Footprint | 클라우드 비용→탄소 추정 | 코드 레벨 분석 |
-| **GreenPulse** | **코드 정적분석 + SCI 점수 + AI 최적화 코드 산출** | — |
+| **energyProject** | **코드 정적분석 + SCI 점수 + AI 최적화 코드 산출** | — |
 
 ### 수익화 가능성
 1. **SaaS B2B**: 기업 ESG 보고서에 소프트웨어 탄소 배출 항목 의무화 추세 → SCI 점수 필요
@@ -59,7 +59,7 @@ R = 기능 단위 — API 호출 1건, 사용자 1명, 트랜잭션 1건 등
 단위: gCO₂eq / R (기능 단위당 탄소 그램)
 ```
 
-### GreenPulse의 E(에너지) 추정 방법 — 3축 분석
+### energyProject의 E(에너지) 추정 방법 — 3축 분석
 
 | 분석 축 | 측정 대상 | 추정 방법 | 근거 |
 |---------|----------|----------|------|
@@ -118,7 +118,7 @@ R = 기능 단위 — API 호출 1건, 사용자 1명, 트랜잭션 1건 등
 ## 4. 파일 구조
 
 ```
-greenpulse/
+energyProject/
 ├── DESIGN_V2.md                    # 이 파일 — 설계 결정 기록
 ├── ADR/                            # Architecture Decision Records
 │   ├── 001-why-sci-standard.md     # SCI 표준 채택 근거
@@ -240,7 +240,7 @@ greenpulse/
 
 출력:
 ┌─────────────────────────────────────┐
-│  GreenPulse SCI Score: 34.7         │
+│  energyProject SCI Score: 34.7      │
 │  등급: D (개선 필요)                  │
 │                                      │
 │  [Compute] 18.2 gCO₂ — 중첩 루프    │
@@ -266,9 +266,9 @@ greenpulse/
 ### 시나리오 2: CI/CD 관문으로 사용
 ```yaml
 # .github/workflows/ci.yml
-- name: GreenPulse SCI 관문
+- name: energyProject SCI 관문
   run: |
-    greenpulse analyze ./src --format json > sci_report.json
+    energyProject analyze ./src --format json > sci_report.json
     python -c "
       import json
       r = json.load(open('sci_report.json'))
@@ -317,5 +317,5 @@ greenpulse/
 
 ---
 
-*v2.0 | 2026-04-15 | GreenPulse 설계 확정*
+*v2.0 | 2026-04-15 | energyProject 설계 확정*
 *기반: ISO/IEC 21031:2024 (SCI), Green Software Foundation SCI for AI*

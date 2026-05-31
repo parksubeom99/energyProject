@@ -1,4 +1,4 @@
-# GreenPulse — Claude Code 작업 가이드
+# energyProject — Claude Code 작업 가이드
 
 > 이 문서는 Claude Code가 길을 잃지 않도록 하는 **네비게이션 파일**입니다.
 > 매 STEP 시작 시 이 파일을 다시 읽고, 현재 위치를 확인하세요.
@@ -38,7 +38,7 @@
 
 ### 할 일
 ```bash
-mkdir -p greenpulse/{backend/{auth,pipeline,sci,events,tests},frontend/src/{store,api,components},infra/{k8s/helm/greenpulse/templates,argocd},ADR,docs,.github/workflows}
+mkdir -p energyProject/{backend/{auth,pipeline,sci,events,tests},frontend/src/{store,api,components},infra/{k8s/helm/greenpulse/templates,argocd},ADR,docs,.github/workflows}
 ```
 
 ### 산출물
@@ -52,7 +52,7 @@ mkdir -p greenpulse/{backend/{auth,pipeline,sci,events,tests},frontend/src/{stor
 ### 검증
 ```bash
 docker compose config  # YAML 문법 확인
-ls -la greenpulse/backend/pipeline/  # 5개 파일 자리 확인
+ls -la energyProject/backend/pipeline/  # 5개 파일 자리 확인
 ```
 
 ---
@@ -67,7 +67,7 @@ ls -la greenpulse/backend/pipeline/  # 5개 파일 자리 확인
 
 ### 검증
 ```bash
-cd greenpulse && python -m pytest backend/tests/test_sci_formula.py -v
+cd energyProject && python -m pytest backend/tests/test_sci_formula.py -v
 ```
 테스트 내용:
 - E=1.0, I=450, M=10, R=1000 → SCI = 0.46 확인
