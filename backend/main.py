@@ -49,6 +49,10 @@ from events.kafka_consumer import (
     handle_message,
 )
 
+# P2 M3-WIRE: best-effort, opt-in supervisor wiring (no-op unless
+# ECS_SUPERVISOR_URL is set). Observation never breaks the pipeline.
+import ecs_integration as ecs
+
 
 # ================================================================
 # FastAPI 앱 생성
@@ -348,13 +352,16 @@ async def analyze_sync(
             status_code=422,
             detail={"error": "코드 파싱 실패", "errors": parsed.errors},
         )
+    ecs.observe("energy-parser", tool_name="parser")
 
     analysis = analyze(
         parsed,
         carbon_intensity=carbon_intensity,
         functional_unit=request.functional_unit,
     )
+    ecs.observe("energy-analyzer", tool_name="analyzer")
     report = score(analysis)
+    ecs.observe("energy-scorer", tool_name="scorer")
 
     # === 비용 산출 (덩어리 2 — 1급 지표) ===
     # E (kWh) x P (USD/kWh) = 1회당 비용. region은 요청 인자 그대로 재사용.
@@ -470,6 +477,7 @@ async def optimize_endpoint(
             status_code=422,
             detail={"error": "코드 파싱 실패", "errors": parsed.errors},
         )
+    ecs.observe("energy-parser", tool_name="parser")
 
     # === 분석 + 스코어 ===
     carbon_intensity = get_carbon_intensity(request.region)
@@ -478,10 +486,21 @@ async def optimize_endpoint(
         carbon_intensity=carbon_intensity,
         functional_unit=request.functional_unit,
     )
+    ecs.observe("energy-analyzer", tool_name="analyzer")
     report = score(analysis)
+    ecs.observe("energy-scorer", tool_name="scorer")
 
     # === 최적화 (Mock 자동 폴백 — CLAUDE_API_KEY 없으면 MockClaudeClient) ===
+    # Pre-action gate (opt-in via ECS_GATE_STAGES): a denied optimize never runs.
+    try:
+        ecs.gate("energy-optimizer")
+    except ecs.ActionDenied as denied:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "ECS 게이트 거부", "reason": str(denied)},
+        )
     optimization = optimize(report, request.source_code)
+    ecs.observe("energy-optimizer", tool_name="optimizer")
 
     # === Before/After 검증 (verifier가 동일 파이프라인 재실행) ===
     verification = verify(
@@ -489,6 +508,7 @@ async def optimize_endpoint(
         carbon_intensity=carbon_intensity,
         functional_unit=request.functional_unit,
     )
+    ecs.observe("energy-verifier", tool_name="verifier")
 
     # === Before/After 비용 산출 (덩어리 2 estimate_cost 재사용) ===
     before_cost_result = estimate_cost(
