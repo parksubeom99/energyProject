@@ -94,12 +94,20 @@ def observe(agent_id: str, *, operation_name: str = "invoke_agent",
         pass
 
 
-def gate(agent_id: str, *, operation_name: str = "invoke_agent") -> None:
+def gate(agent_id: str, *, operation_name: str = "invoke_agent",
+         ecs_policy_action: Optional[str] = None,
+         ecs_actor: Optional[str] = None) -> None:
     """Pre-action: ask ``/decisions`` before a stage runs.
 
     Only stages listed in ``ECS_GATE_STAGES`` are gated; for everything else
     this is a no-op. On a listed stage, ``ActionDenied`` from the supervisor is
     allowed to propagate so the caller can refuse to run the action.
+
+    ``ecs_policy_action`` lets a caller express a domain verdict in the frozen
+    C0 governance vocabulary (``"warn"`` / ``"block"``); the supervisor's
+    deterministic ruleset scores ``block`` as a denial. Article 12 requires an
+    actor whenever a policy action is set, so ``ecs_actor`` must accompany a
+    non-None ``ecs_policy_action`` (the client enforces this before any network).
     """
     if not _enabled or agent_id not in _GATE_STAGES:
         return
@@ -107,4 +115,6 @@ def gate(agent_id: str, *, operation_name: str = "invoke_agent") -> None:
         provider_name="energyProject",
         operation_name=operation_name,
         agent_id=agent_id,
+        ecs_policy_action=ecs_policy_action,
+        ecs_actor=ecs_actor,
     )

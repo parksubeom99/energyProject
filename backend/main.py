@@ -28,6 +28,7 @@ from auth.models import (
     AnalyzeRequest, AnalyzeResponse, HistoryItem,
     UserResponse, Role,
     OptimizeRequest, OptimizeResponse,
+    ScheduleRequest, ScheduleResponse, RegionRank,
 )
 from auth.jwt_handler import (
     create_access_token, create_refresh_token,
@@ -39,6 +40,7 @@ from pipeline.analyzer import analyze
 from pipeline.scorer import score
 from pipeline.optimizer import optimize
 from pipeline.verifier import verify
+from pipeline.scheduler import schedule
 from sci.carbon_intensity import get_carbon_intensity
 from sci.cost import estimate_cost
 from events.schemas import AnalysisRequestEvent
@@ -558,6 +560,104 @@ async def optimize_endpoint(
     increment_usage(username)
 
     return response_data
+
+
+# ================================================================
+# 스케줄러 엔드포인트 (C2) — energy-aware 배치 리전 결정 + ECS 게이트
+# ================================================================
+@app.post("/schedule", response_model=ScheduleResponse, tags=["스케줄러"])
+async def schedule_endpoint(
+    request: ScheduleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """energy-aware 배치 리전 스케줄링 — 최저 탄소·가격 선택 + 게이트 검증.
+
+    흐름:
+    1. 후보 리전 신호(탄소·전기료)로 스케줄러가 최적 리전 + verdict(ok|warn|block) 산출
+    2. verdict를 C0 governance 어휘로 환원해 pre-action 게이트(/decisions)에 제출
+       - block → supervisor가 deny → HTTP 403 (dispatch 안 함)
+       - ok/warn → allow → 결정 반환
+    3. allow 시 post-hoc 관측(/events)도 기록. 게이트는 allow·deny 모두 감사로그에 남음.
+
+    기존 5-에이전트 파이프라인은 호출하지 않는다 (스케줄러는 앞단 결정자).
+    """
+    username = current_user["username"]
+    role = current_user["role"]
+
+    # === Rate Limit (다른 엔드포인트와 동일 정책) ===
+    allowed, rate_info = check_rate_limit(username, role)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "일일 분석 한도 초과",
+                "limit": rate_info["limit"],
+                "used": rate_info["used"],
+                "reset_at": rate_info["reset_at"],
+                "upgrade_hint": "프로 플랜으로 업그레이드하면 일 1000회까지 분석 가능합니다.",
+            },
+        )
+
+    # === 스케줄러 결정 ===
+    try:
+        decision = schedule(
+            request.candidate_regions,
+            carbon_block_ceiling=request.carbon_block_ceiling,
+            carbon_warn_ceiling=request.carbon_warn_ceiling,
+            carbon_weight=request.carbon_weight,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "스케줄링 입력 오류", "reason": str(exc)},
+        )
+
+    # === verdict → C0 governance 어휘 → pre-action 게이트 ===
+    # block/warn 설정 시 Article 12에 따라 actor 필수 (client가 사전 검증).
+    policy_action = {"ok": None, "warn": "warn", "block": "block"}[decision.verdict]
+    actor = "energyProject:energy-scheduler" if policy_action else None
+    try:
+        ecs.gate("energy-scheduler", ecs_policy_action=policy_action, ecs_actor=actor)
+    except ecs.ActionDenied as denied:
+        # 게이트 거부 = dispatch 금지. 결정 사유와 함께 403. (decision_event는
+        # supervisor가 이미 감사로그에 기록함.)
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "ECS 게이트 거부",
+                "reason": str(denied),
+                "verdict": decision.verdict,
+                "selected_region": decision.selected_region,
+                "recommendation": decision.recommendation,
+                "rationale": decision.rationale,
+            },
+        )
+
+    # 통과한 결정만 post-hoc 관측에 기록 (거부는 위에서 이미 반환).
+    ecs.observe("energy-scheduler", tool_name="scheduler")
+
+    increment_usage(username)
+    now = datetime.utcnow().isoformat() + "Z"
+
+    return ScheduleResponse(
+        selected_region=decision.selected_region,
+        selected_carbon_intensity=decision.selected_carbon_intensity,
+        selected_electricity_price=decision.selected_electricity_price,
+        recommendation=decision.recommendation,
+        verdict=decision.verdict,
+        rationale=decision.rationale,
+        ranked=[
+            RegionRank(
+                region=s.region,
+                carbon_intensity=s.carbon_intensity,
+                electricity_price=s.electricity_price,
+                score=s.score,
+            )
+            for s in decision.ranked
+        ],
+        gate_decision="allow",
+        scheduled_at=now,
+    )
 
 
 @app.get("/analyze/{analysis_id}", tags=["분석"])

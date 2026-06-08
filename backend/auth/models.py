@@ -174,3 +174,43 @@ class OptimizeResponse(BaseModel):
     error_message: str = ""
     cost_currency: str = "USD"
     optimized_at: str
+
+
+# ================================================================
+# 스케줄러 요청/응답 모델 (C2 — energy-aware 워커 +1)
+# ================================================================
+class ScheduleRequest(BaseModel):
+    """배치 리전 스케줄링 요청 — 후보 리전 중 최저 탄소·가격 선택."""
+    candidate_regions: list[str] = Field(
+        ..., min_length=1, description="후보 리전 코드 목록 (예: ['FR','PL'])"
+    )
+    carbon_block_ceiling: float = Field(
+        default=500.0, gt=0, description="선택 리전 탄소가 이 값 이상이면 거부(gCO2/kWh)"
+    )
+    carbon_warn_ceiling: float = Field(
+        default=350.0, gt=0, description="이 값 이상이면 허용+경고(gCO2/kWh)"
+    )
+    carbon_weight: float = Field(
+        default=0.7, ge=0, le=1, description="탄소 가중치(0~1), 나머지는 전기료"
+    )
+
+
+class RegionRank(BaseModel):
+    """후보 리전 1건의 신호 + 점수 (낮을수록 우수)."""
+    region: str
+    carbon_intensity: float
+    electricity_price: float
+    score: float
+
+
+class ScheduleResponse(BaseModel):
+    """스케줄링 응답 — 선택 리전 + verdict + 게이트 결정."""
+    selected_region: str
+    selected_carbon_intensity: float
+    selected_electricity_price: float
+    recommendation: str          # "dispatch" | "delay"
+    verdict: str                 # "ok" | "warn" | "block"
+    rationale: str
+    ranked: list[RegionRank]
+    gate_decision: str           # "allow" (deny는 403으로 반환)
+    scheduled_at: str
